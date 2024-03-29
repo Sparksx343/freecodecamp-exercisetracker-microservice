@@ -6,6 +6,7 @@ var moment = require("moment");
 var mongoose = require("mongoose");
 const BodyParser = require("body-parser");
 
+app.use(BodyParser.json());
 app.use(
   BodyParser.urlencoded({
     extended: false,
@@ -28,7 +29,7 @@ const exerciseSchema = new Schema({
   user_id: { type: String, required: true },
   description: { type: String, required: true },
   duration: { type: Number, required: true },
-  date: { type: Date, required: true },
+  date: { type: String, required: true },
 });
 
 let User = mongoose.model("User", userSchema);
@@ -71,9 +72,9 @@ app.post("/api/users/:_id/exercises", (req, res) => {
     let date;
 
     if (inputDate == "") {
-      date = moment().toDate();
+      date = moment().format("YYYY-MM-DD");
     } else {
-      date = moment(inputDate).toDate();
+      date = moment(inputDate).format("YYYY-MM-DD");
     }
     User.findById(_id, (err, userDb) => {
       if (err) {
@@ -96,7 +97,7 @@ app.post("/api/users/:_id/exercises", (req, res) => {
           username: userDb.username,
           description: exercise.description,
           duration: exercise.duration,
-          date: moment(date).toDate().toDateString(),
+          date: moment(date).format("ddd MMM DD YYYY"),
           _id,
         });
       });
@@ -108,25 +109,34 @@ app.post("/api/users/:_id/exercises", (req, res) => {
 
 app.get("/api/users/:_id/logs", async (req, res) => {
   const userId = req.params._id;
+  const from = req.query.from || new Date(0).toISOString().substring(0, 10);
+  const to =
+    req.query.to || new Date(Date.now()).toISOString().substring(0, 10);
+  const limit = Number(req.query.limit) || 0;
 
-  const user = await User.findById(userId).exec();
-  const exercises = await Exercise.find({
+  let user = await User.findById(userId).exec();
+
+  let exercises = await Exercise.find({
     user_id: userId,
+    date: { $gte: from, $lte: to },
   })
     .select("description duration date")
+    .limit(limit)
     .exec();
 
-  const parsedDatesLog = exercises.map((exercise) => {
+  let parsedDatesLog = exercises.map((exercise) => {
     return {
       description: exercise.description,
       duration: exercise.duration,
-      date: new Date(exercise.date).toDateString(),
+      date: moment(exercise.date).format("ddd MMM DD YYYY"),
     };
   });
+
   res.json({
     _id: user._id,
     username: user.username,
     count: parsedDatesLog.length,
+    log: parsedDatesLog,
   });
 });
 
