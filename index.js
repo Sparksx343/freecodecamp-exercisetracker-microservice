@@ -43,8 +43,6 @@ app.get("/", (req, res) => {
 app.post("/api/users", (req, res) => {
   const doc = new User({
     username: req.body.username,
-    count: 0,
-    log: [],
   });
   doc.save();
   const data = doc.toObject();
@@ -66,16 +64,16 @@ app.get("/api/users", (req, res) => {
 
 app.post("/api/users/:_id/exercises", (req, res) => {
   try {
-    const valida_fecha = new Date(req.body.date);
+    const inputDate = req.body.date.trim();
     const _id = req.body[":_id"] ?? req.params._id;
     const description = req.body.description;
     const duration = parseInt(req.body.duration);
     let date;
 
-    if (!isNaN(valida_fecha) && valida_fecha instanceof Date) {
-      date = req.body.date.trim() !== "" ? new Date(req.body.date) : new Date();
+    if (inputDate == "") {
+      date = moment().toDate();
     } else {
-      date = new Date();
+      date = moment(inputDate).toDate();
     }
     User.findById(_id, (err, userDb) => {
       if (err) {
@@ -98,7 +96,7 @@ app.post("/api/users/:_id/exercises", (req, res) => {
           username: userDb.username,
           description: exercise.description,
           duration: exercise.duration,
-          date: new Date(date).toDateString(),
+          date: moment(date).toDate().toDateString(),
           _id,
         });
       });
@@ -106,6 +104,30 @@ app.post("/api/users/:_id/exercises", (req, res) => {
   } catch (error) {
     return res.json(error);
   }
+});
+
+app.get("/api/users/:_id/logs", async (req, res) => {
+  const userId = req.params._id;
+
+  const user = await User.findById(userId).exec();
+  const exercises = await Exercise.find({
+    user_id: userId,
+  })
+    .select("description duration date")
+    .exec();
+
+  const parsedDatesLog = exercises.map((exercise) => {
+    return {
+      description: exercise.description,
+      duration: exercise.duration,
+      date: new Date(exercise.date).toDateString(),
+    };
+  });
+  res.json({
+    _id: user._id,
+    username: user.username,
+    count: parsedDatesLog.length,
+  });
 });
 
 const listener = app.listen(process.env.PORT || 3000, () => {
