@@ -2,6 +2,7 @@ const express = require("express");
 const app = express();
 const cors = require("cors");
 require("dotenv").config();
+var moment = require("moment");
 var mongoose = require("mongoose");
 const BodyParser = require("body-parser");
 
@@ -20,14 +21,18 @@ const Schema = mongoose.Schema;
 
 const userSchema = new Schema({
   username: { type: String, required: true },
-  description: { type: String },
-  duration: { type: Number },
-  date: { type: String },
-  count: { type: Number },
-  log: { type: [Object] },
+});
+
+const exerciseSchema = new Schema({
+  username: { type: String, required: true },
+  user_id: { type: String, required: true },
+  description: { type: String, required: true },
+  duration: { type: Number, required: true },
+  date: { type: Date, required: true },
 });
 
 let User = mongoose.model("User", userSchema);
+let Exercise = mongoose.model("Exercise", exerciseSchema);
 
 app.use(cors());
 app.use(express.static("public"));
@@ -45,7 +50,7 @@ app.post("/api/users", (req, res) => {
   const data = doc.toObject();
   const { _id, username } = data;
   const filtered = { _id, username };
-  return res.json(filtered);
+  return res.status(201).json(filtered);
 });
 
 app.get("/api/users", (req, res) => {
@@ -55,41 +60,49 @@ app.get("/api/users", (req, res) => {
       res.status(500).json({ error: "Error al buscar usuarios" });
       return;
     }
-    res.json(documentos);
+    res.status(200).json(documentos);
   }).select("_id username");
 });
 
 app.post("/api/users/:_id/exercises", (req, res) => {
   try {
     const valida_fecha = new Date(req.body.date);
-    const _id = req.body[":_id"];
+    const _id = req.body[":_id"] ?? req.params._id;
     const description = req.body.description;
-    const duration = parseFloat(req.body.duration);
+    const duration = parseInt(req.body.duration);
     let date;
 
     if (!isNaN(valida_fecha) && valida_fecha instanceof Date) {
-      date =
-        req.body.date.trim() !== ""
-          ? new Date(req.body.date).toDateString()
-          : new Date().toDateString();
+      date = req.body.date.trim() !== "" ? new Date(req.body.date) : new Date();
     } else {
-      date = new Date().toDateString();
+      date = new Date();
     }
-    const user = User.findById(_id, (err, user) => {
+    User.findById(_id, (err, userDb) => {
       if (err) {
-        console.log(err);
-        return;
+        console.error(err);
+        res.status(400).json({ msg: "Invalid User ID" });
       }
-      user.description = description;
-      user.duration = duration;
-      user.date = date;
-      user.save();
+      const newExercise = new Exercise({
+        user_id: userDb._id,
+        username: userDb.username,
+        description,
+        duration,
+        date,
+      });
+      newExercise.save((err, exercise) => {
+        if (err) {
+          console.error("Cant save new exercise");
+          res.status(500).json({ msg: "Exercise creation failed" });
+        }
+        res.status(201).json({
+          username: userDb.username,
+          description: exercise.description,
+          duration: exercise.duration,
+          date: new Date(date).toDateString(),
+          _id,
+        });
+      });
     });
-    if (!user) {
-      res.status(404).json({ error: "Usuario no encontrado" });
-      return;
-    }
-    res.json(user);
   } catch (error) {
     return res.json(error);
   }
